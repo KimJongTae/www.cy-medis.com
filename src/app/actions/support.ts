@@ -27,7 +27,8 @@ export async function submitInquiry(_prev: InquiryState, formData: FormData): Pr
   if (!values.subject || values.subject.length > 150) fieldErrors.subject = "제목을 입력해 주세요.";
   if (!values.content || values.content.length > 5000) fieldErrors.content = "문의 내용을 입력해 주세요. (5,000자 이내)";
   if (formData.get("agree") !== "on") fieldErrors.agree = "개인정보 수집·이용에 동의해 주세요.";
-  if (Object.keys(fieldErrors).length) return { fieldErrors, values };
+  // 오류로 폼이 다시 그려져도 동의 체크가 유지되도록 함께 돌려줌 (React 19 는 액션 후 폼을 초기값으로 리셋)
+  if (Object.keys(fieldErrors).length) return { fieldErrors, values: { ...values, agree: formData.get("agree") === "on" ? "on" : "" } };
 
   const h = await headers();
   const ip = (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "").trim();

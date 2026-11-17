@@ -28,9 +28,10 @@ p.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const text = () => p.evaluate(() => document.body.innerText);
+// 하이드레이션이 끝나기 전에 클릭하면 결과가 흔들리므로 네트워크가 잠잠해질 때까지 대기
 const go = async (url) => {
-  await p.goto(BASE + url, { waitUntil: "load" });
-  await wait(500);
+  await p.goto(BASE + url, { waitUntil: "networkidle0", timeout: 30000 }).catch(() => {});
+  await wait(300);
 };
 const waitText = (t) => p.waitForFunction((t) => document.body.innerText.includes(t), { timeout: 20000 }, t).catch(() => {});
 async function clickNav(sel) {
@@ -62,7 +63,12 @@ try {
   await p.click("button[type=submit]");
   await waitText("개인정보 수집·이용에 동의해 주세요");
   ok((await text()).includes("개인정보 수집·이용에 동의해 주세요"), "inquiry: validation errors");
+  await wait(500);
   await p.click("input[name=agree]");
+  await p.click("button[type=submit]"); // 동의만 하고 제출 → 다른 항목 오류, 동의 체크는 유지돼야 함
+  await waitText("이름을 입력해 주세요");
+  await wait(500);
+  ok(await p.$eval("input[name=agree]", (el) => el.checked), "inquiry: consent stays checked after validation error");
   await p.type("#name", "테스트고객");
   await p.type("#email", "test@example.com");
   await p.type("#subject", "E2E 견적 문의");

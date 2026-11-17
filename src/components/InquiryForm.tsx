@@ -47,7 +47,7 @@ export default function InquiryForm() {
         </dl>
         <p className="mt-2 text-xs text-slate-400">동의를 거부할 수 있으나, 거부 시 온라인 문의 접수가 제한됩니다.</p>
         <label className="mt-4 inline-flex cursor-pointer items-center gap-2 font-medium text-slate-800">
-          <input type="checkbox" name="agree" className="size-5 accent-brand-600" aria-invalid={!!err.agree} />
+          <input type="checkbox" name="agree" defaultChecked={v.agree === "on"} className="size-5 accent-brand-600" aria-invalid={!!err.agree} />
           동의합니다.
         </label>
         {err.agree && <FieldError>{err.agree}</FieldError>}
