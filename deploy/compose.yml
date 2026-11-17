@@ -1,0 +1,35 @@
+# ㈜청연메디칼 홈페이지 운영 구성 — 서버의 배포 폴더(기본 /opt/cymedical)에 복사되어 사용됩니다.
+#   app   : 홈페이지 (Next.js)
+#   caddy : HTTPS 자동 발급(Let's Encrypt) + 리버스 프록시
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/kimjongtae/www.cy-medis.com}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: app.env
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data # DB(site.db) + 첨부파일(uploads/) — 백업 대상
+    expose:
+      - "3000"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

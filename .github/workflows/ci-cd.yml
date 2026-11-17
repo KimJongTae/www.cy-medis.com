@@ -1,0 +1,150 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/kimjongtae/www.cy-medis.com # GHCR 이미지 이름은 소문자만 허용
+
+jobs:
+  # ───────────────────────── CI: 린트 · 타입체크 · 빌드 · E2E ─────────────────────────
+  test:
+    name: Lint, typecheck, build, E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: Start production server (standalone)
+        run: |
+          cp -r public .next/standalone/
+          cp -r .next/static .next/standalone/.next/
+          cp -r seed .next/standalone/
+          DATA_DIR="$RUNNER_TEMP/data" PORT=3000 HOSTNAME=127.0.0.1 \
+          ADMIN_PASSWORD=ci-test-password \
+          SESSION_SECRET="$(openssl rand -base64 48)" \
+          INSECURE_COOKIE=1 \
+            nohup node .next/standalone/server.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/api/health && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/server.log"; exit 1
+
+      - name: E2E smoke test
+        env:
+          BASE: http://127.0.0.1:3000
+          ADMIN_PASSWORD: ci-test-password
+        run: CHROME_PATH="$(command -v google-chrome)" npm run test:e2e
+
+      - name: Server log
+        if: always()
+        run: cat "$RUNNER_TEMP/server.log" || true
+
+  # ───────────────────────── 이미지 빌드 → GHCR 푸시 (main 만) ─────────────────────────
+  image:
+    name: Build & push Docker image
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: sha-${{ steps.short.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: short
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=sha-${{ steps.short.outputs.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ───────────────────────── CD: 서버에 SSH 배포 (서버 설정 후 활성화) ─────────────────────────
+  deploy:
+    name: Deploy to server
+    needs: image
+    # 저장소 Variables 에 DEPLOY_HOST 를 등록하면 자동 배포가 켜집니다 (deploy/README.md 참고)
+    if: vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      HOST: ${{ vars.DEPLOY_HOST }}
+      USER: ${{ vars.DEPLOY_USER }}
+      PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DIR: ${{ vars.DEPLOY_PATH || '/opt/cymedical' }}
+      TAG: ${{ needs.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $HOST
+            User $USER
+            Port $PORT
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Upload compose files
+        run: scp deploy/compose.yml deploy/Caddyfile deploy/deploy.sh "server:$DIR/"
+
+      - name: Deploy ${{ env.TAG }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # shellcheck disable=SC2029 # 변수는 의도적으로 Actions 쪽에서 확장해 전달
+          printf '%s' "$GHCR_TOKEN" | ssh server \
+            "cd '$DIR' && IMAGE='${{ env.IMAGE }}' GHCR_USER='${{ github.actor }}' bash deploy.sh '$TAG'"

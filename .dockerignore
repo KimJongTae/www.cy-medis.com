@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+data
+.env*
+!.env.example
+.git
+.github
+npm-debug.log*
+*.md
+!README.md
+e2e
+deploy
+.github

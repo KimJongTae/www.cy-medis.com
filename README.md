@@ -30,15 +30,13 @@ npm run dev                  # http://localhost:3000
 - 비밀번호: `.env.local` 의 `ADMIN_PASSWORD`
 - 기능: 공지사항/자료실 글쓰기·수정·삭제, 첨부파일 업로드(파일당 30MB), 상단 고정, 온라인문의 확인·상태(신규/확인/답변완료)·메모·삭제, 이메일 답장 바로가기
 
-## 운영 배포
-```bash
-npm run build
-npm start            # 기본 3000번 포트, 앞단에 Nginx 등 리버스 프록시 + HTTPS 권장
-```
-- 운영 서버에서는 HTTPS 를 쓰세요(로그인 쿠키가 HTTPS 전용으로 발급됩니다).
-- 데이터는 `DATA_DIR`(기본 `./data`)에 저장됩니다: `site.db`(게시물·문의) + `uploads/`(첨부파일).
-  **백업은 이 폴더만 복사하면 됩니다.**
+## 운영 배포 (CI/CD)
+`main` 에 push 하면 GitHub Actions 가 린트·타입체크·빌드·E2E 테스트 → Docker 이미지(GHCR) → 서버 자동 배포(실패 시 롤백)까지 진행합니다.
+서버 준비와 GitHub 설정 방법은 **[deploy/README.md](deploy/README.md)** 를 참고하세요.
+
+- 데이터는 `DATA_DIR`(기본 `./data`, Docker 에서는 `/app/data`)에 저장됩니다: `site.db`(게시물·문의) + `uploads/`(첨부파일). **백업은 이 폴더만 복사하면 됩니다.**
 - 첫 실행 시 기존 자료실 글 "BIS MONITOR 브로셔"(PDF 포함, `seed/`)가 자동으로 등록됩니다.
+- 로컬에서 E2E 테스트: 서버를 띄운 뒤 `BASE=http://localhost:3000 ADMIN_PASSWORD=... npm run test:e2e`
 
 ## 기술 메모
 - 게시판/문의: Server Actions + `node:sqlite`, 페이지는 요청 시 렌더링(`connection()`)

@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Docker 배포용: 실행에 필요한 파일만 .next/standalone 에 모음
+  output: "standalone",
   // 이미지는 미리 WebP 로 최적화해 두었으므로 런타임 변환을 쓰지 않음
   images: { unoptimized: true },
   experimental: {
