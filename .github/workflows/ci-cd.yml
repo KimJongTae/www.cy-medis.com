@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v5
         with:
@@ -70,7 +70,7 @@ jobs:
     outputs:
       tag: sha-${{ steps.short.outputs.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: short
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
@@ -119,7 +119,7 @@ jobs:
       DIR: ${{ vars.DEPLOY_PATH || '/opt/cymedical' }}
       TAG: ${{ needs.image.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Configure SSH
         env:
